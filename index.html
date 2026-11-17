@@ -89,12 +89,35 @@ body {
 	text-align: center;
 	z-index: 1;
 }
+
+/* Tester lock (2026-11-17, user): a password before the game downloads. Not real security:
+   the files are public; it keeps strangers with the link out. */
+#lock { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+	background: #212638; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; z-index: 10; }
+#lock form { background: #1a1e2e; border: 3px solid #e8b84a; border-radius: 20px; padding: 32px 36px;
+	text-align: center; color: #eef0ff; max-width: 360px; width: calc(100% - 32px); box-sizing: border-box; }
+#lock h1 { margin: 0 0 8px; font-size: 26px; }
+#lock p { margin: 0 0 20px; color: #aab0c8; font-size: 15px; }
+#lock input { width: 100%; box-sizing: border-box; font-size: 20px; padding: 12px 14px; border-radius: 12px;
+	border: 2px solid #3a4160; background: #0f1220; color: #fff; text-align: center; }
+#lock button { margin-top: 16px; width: 100%; font-size: 20px; font-weight: 700; padding: 14px; border: 0;
+	border-radius: 14px; background: #6cd13a; color: #10200a; cursor: pointer; }
+#lock .wrong { color: #ffd23a; min-height: 20px; margin: 12px 0 0; font-size: 15px; }
 		</style>
 		<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
 <link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
 
 	</head>
 	<body>
+		<div id="lock" style="display:none">
+			<form id="lock-form" autocomplete="off">
+				<h1>Stickmen vs Aliens</h1>
+				<p>Test version. Please enter the password.</p>
+				<input id="lock-input" type="password" placeholder="Password" autofocus>
+				<button type="submit">Play</button>
+				<div class="wrong" id="lock-wrong"></div>
+			</form>
+		</div>
 		<canvas id="canvas">
 			Your browser does not support the canvas tag.
 		</canvas>
@@ -198,6 +221,43 @@ const engine = new Engine(GODOT_CONFIG);
 			displayFailureNotice(missingMsg + missing.join('\n'));
 		}
 	} else {
+		withPassword(startNow);
+	}
+
+	// The tester lock: SHA-256 of the password (lower case, trimmed); remembered in this browser.
+	function withPassword(go) {
+		const HASH = '1caea49753faec4173e33ec359a7514b4160403d3c5d75d763de5e503c74ab55';
+		const KEY = 'sva_unlocked';
+		try {
+			if (localStorage.getItem(KEY) === HASH) {
+				go();
+				return;
+			}
+		} catch (e) { /* private window: ask every time */ }
+		const lock = document.getElementById('lock');
+		const input = document.getElementById('lock-input');
+		const wrong = document.getElementById('lock-wrong');
+		lock.style.display = 'flex';
+		input.focus();
+		document.getElementById('lock-form').addEventListener('submit', async (ev) => {
+			ev.preventDefault();
+			const bytes = new TextEncoder().encode(input.value.trim().toLowerCase());
+			const digest = await crypto.subtle.digest('SHA-256', bytes);
+			const hex = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+			if (hex !== HASH) {
+				wrong.textContent = '! Wrong password, try again';
+				input.select();
+				return;
+			}
+			try {
+				localStorage.setItem(KEY, HASH);
+			} catch (e) { /* fine */ }
+			lock.remove();
+			go();
+		});
+	}
+
+	function startNow() {
 		setStatusMode('progress');
 		engine.startGame({
 			'onProgress': function (current, total) {
